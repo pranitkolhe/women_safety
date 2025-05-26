@@ -1,0 +1,115 @@
+<% layout("layout/boilerplate.ejs") %>
+<h1>SOS Page</h1>
+
+<!-- Map container -->
+<div id="map" style="height: 500px; width: 100%"></div>
+<script>
+  var map; // Global map variable to persist map state
+  var polyline; // Global polyline variable to persist the route
+  var startLocationMarker, lastLocationMarker, endLocationMarker; // Markers for locations
+  var lastFetchedCoordinates = []; // To store previously fetched coordinates for continuous drawing
+
+  async function fetchSOSData() {
+    try {
+      // Fetch SOS data from the backend
+      const response = await fetch("/api/sos/<%=id%>");
+      const data = await response.json();
+      const SOS = data.sos;
+
+      console.log(SOS);
+
+      // Leaflet Map Initialization (Only initialize once if map is not created)
+      if (!map) {
+        map = L.map("map").setView(
+          [SOS.last_location.latitude, SOS.last_location.longitude],
+          13
+        ); // Center the map at the SOS last location
+
+        // Load and display tile layers on the map
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+        }).addTo(map);
+      }
+
+      // Array of all locations (including last location)
+      var locations = SOS.locations.map(function (loc) {
+        return [loc.latitude, loc.longitude]; // Convert locations into [latitude, longitude] format
+      });
+
+      // Combine new location with previously fetched locations to create continuous route
+      if (lastFetchedCoordinates.length > 0) {
+        locations = lastFetchedCoordinates.concat(locations);
+      }
+
+      // Create the polyline if it does not exist, or update if it does
+      if (polyline) {
+        polyline.setLatLngs(locations); // Update polyline with new coordinates
+      } else {
+        polyline = L.polyline(locations, { color: "blue" }).addTo(map); // Draw the initial polyline
+      }
+
+      // Store the latest coordinates for next update
+      lastFetchedCoordinates = locations.slice(); // Keep a copy for the next update
+
+      // Place marker at the start location (first location in the array)
+      if (startLocationMarker) {
+        startLocationMarker.setLatLng([locations[0][0], locations[0][1]]);
+      } else {
+        startLocationMarker = L.marker([
+          locations[0][0],
+          locations[0][1],
+        ]).addTo(map);
+        startLocationMarker.bindPopup("<b>Start Location</b>").openPopup();
+      }
+
+      // Highlight the SOS last location (with a red marker)
+      var redIcon = L.icon({
+        iconUrl: "https://cdn-icons-png.flaticon.com/128/4874/4874759.png", // Red marker icon
+        iconSize: [41, 41], // Adjust the size of the icon
+        iconAnchor: [12, 41], // Anchor the icon at the bottom
+        popupAnchor: [1, -34], // Adjust the popup position
+      });
+
+      if (lastLocationMarker) {
+        lastLocationMarker.setLatLng([
+          SOS.last_location.latitude,
+          SOS.last_location.longitude,
+        ]);
+      } else {
+        lastLocationMarker = L.marker(
+          [SOS.last_location.latitude, SOS.last_location.longitude],
+          { icon: redIcon }
+        ).addTo(map);
+        lastLocationMarker.bindPopup("<b>SOS Location (Last)</b>").openPopup();
+      }
+
+      // Place marker at the end location (last location in the array or the final location)
+      if (endLocationMarker) {
+        endLocationMarker.setLatLng([
+          locations[locations.length - 1][0],
+          locations[locations.length - 1][1],
+        ]);
+      } else {
+        endLocationMarker = L.marker([
+          locations[locations.length - 1][0],
+          locations[locations.length - 1][1],
+        ]).addTo(map);
+        endLocationMarker.bindPopup("<b>Current Location</b>").openPopup();
+      }
+
+      // Fit map bounds to the route
+      map.fitBounds(polyline.getBounds());
+    } catch (error) {
+      console.error("Error fetching SOS data:", error);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    fetchSOSData(); // Initial data fetch
+    setInterval(function () {
+      window.location.reload();
+    }, 40000); // Fetch data every 60 seconds by reloading
+  }); // Fetch data every 60 seconds
+</script>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
